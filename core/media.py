@@ -23,7 +23,7 @@ class FFmpegError(RuntimeError):
     pass
 
 
-def _run(args: list[str], desc: str) -> None:
+def run_ffmpeg(args: list[str], desc: str) -> None:
     cmd = [FFMPEG, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", *args]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -103,7 +103,7 @@ def standardize_video(src: Path, dst: Path, cfg) -> Path:
     音轨直接丢掉——声音由 TTS 那条线单独提供。
     """
     dst.parent.mkdir(parents=True, exist_ok=True)
-    _run(
+    run_ffmpeg(
         [
             "-i", str(src),
             "-an",
@@ -123,7 +123,7 @@ def standardize_video(src: Path, dst: Path, cfg) -> Path:
 def standardize_audio(src: Path, dst: Path, cfg) -> Path:
     """统一音频格式（采样率 / 声道 / PCM）。"""
     dst.parent.mkdir(parents=True, exist_ok=True)
-    _run(
+    run_ffmpeg(
         [
             "-i", str(src),
             "-vn",
@@ -159,7 +159,7 @@ def concat_audio(clips: list[tuple[Path, int]], dst: Path, cfg) -> Path:
         parts = "".join(f"[a{i}]" for i in range(len(clips)))
         chain.append(f"{parts}concat=n={len(clips)}:v=0:a=1[out]")
 
-    _run(
+    run_ffmpeg(
         [
             *args,
             "-filter_complex", ";".join(chain),
