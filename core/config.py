@@ -24,6 +24,7 @@ DEFAULTS: dict = {
         "heygem_host_dir": "~/heygem_data/face2face",
         "heygem_container_dir": "/code/data",
         "workspace": "workspace",
+        "logs": "logs",
     },
     "services": {
         "heygem_base": "http://127.0.0.1:8383",
@@ -104,6 +105,7 @@ def load_config(path: str | Path | None = None) -> SimpleNamespace:
     for section, key in _RAW_PATH_KEYS:
         setattr(getattr(cfg, section), key, _expand_raw(getattr(getattr(cfg, section), key)))
     cfg.paths.workspace = _expand_local(cfg.paths.workspace, root)
+    cfg.paths.logs = _expand_local(cfg.paths.logs, root)
     cfg.paths.heygem_container_dir = str(cfg.paths.heygem_container_dir).rstrip("/")
     return cfg
 
