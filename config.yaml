@@ -1,0 +1,47 @@
+# 数字人口播视频生成 — 运行配置
+# 所有键都有内置默认值（见 core/config.py 的 DEFAULTS），这里只写需要覆盖的。
+
+paths:
+  # ★ 必须与 docker-compose-lite.yml 的 volumes 定义一致 ★
+  #   P0 步骤 3.2：grep -A 5 "volumes:" docker-compose-lite.yml
+  heygem_host_dir: "~/heygem_data/face2face"   # 宿主机方向
+  heygem_container_dir: "/code/data"           # 容器内方向
+  workspace: "workspace"                       # 相对路径按项目根目录解析
+
+services:
+  heygem_base: "http://127.0.0.1:8383"
+  gpt_sovits_base: "http://127.0.0.1:9880"
+
+tts:
+  engine: "gpt_sovits"        # gpt_sovits | mock
+  text_lang: "zh"
+  prompt_lang: "zh"
+  text_split_method: "cut5"
+  speed_factor: 1.0
+  max_chars: 50               # 单句最长字数，超长按逗号二次切分
+  # 句间停顿（毫秒）
+  pause_comma: 200
+  pause_period: 400
+  pause_paragraph: 800
+
+audio:
+  # HeyGem 输入音频的统一格式（P0 步骤 3.5 后按实测调整）
+  target_sample_rate: 16000
+  target_channels: 1
+
+video:
+  target_fps: 25
+  target_codec: "libx264"
+  target_pix_fmt: "yuv420p"
+  crf: 18
+
+timeouts:
+  heygem_submit: 30           # 提交请求超时（秒）
+  heygem_task: 3600           # 合成任务总超时（秒）
+  poll_interval: 3            # 轮询间隔（秒）
+  tts_request: 120            # 单句 TTS 请求超时（秒）
+
+limits:
+  max_script_chars: 500       # MVP 限制，超长拆多次跑
+  min_video_seconds: 8
+  min_audio_seconds: 3

@@ -1,0 +1,7 @@
+# 运行期依赖。ffmpeg / ffprobe 需另外安装并加入 PATH。
+gradio>=4.44
+requests>=2.31
+PyYAML>=6.0
+
+# 可选：参考音频自动转写。装不上时 GPT-SoVITS 会退化为 ref_free 模式。
+# funasr>=1.1

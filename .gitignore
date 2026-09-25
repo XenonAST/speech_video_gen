@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ── 本项目产出 ──
+workspace/
+logs/
+testdata/
