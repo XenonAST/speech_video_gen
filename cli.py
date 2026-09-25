@@ -13,7 +13,7 @@ from pathlib import Path
 
 from core import heygem as heygem_mod
 from core.config import ensure_dirs, load_config
-from core.logs import setup_logging
+from core.logs import setup_logging, soften_console_encoding
 from core.pipeline import run_pipeline
 from core.tts import build_tts
 
@@ -41,18 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _soften_console_encoding() -> None:
-    """Windows 控制台默认 GBK，遇到 emoji 会直接抛 UnicodeEncodeError。"""
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            try:
-                stream.reconfigure(errors="replace")
-            except (ValueError, OSError):
-                pass
-
-
 def main(argv: list[str] | None = None) -> int:
-    _soften_console_encoding()
+    soften_console_encoding()
     args = build_parser().parse_args(argv)
     cfg = load_config(args.config)
     ensure_dirs(cfg)

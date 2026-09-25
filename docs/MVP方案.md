@@ -335,23 +335,27 @@ curl "http://127.0.0.1:9880/tts?text=你好，这是一段测试语音。&text_l
 ```
 ~/speech_video_gen/
 ├── app.py                      # Gradio 入口
+├── cli.py                      # 命令行入口（不经过界面跑一遍，便于调试）
 ├── config.yaml                 # 配置（路径、端口、参数）
 ├── requirements.txt
 │
 ├── core/
 │   ├── config.py               # 配置加载
-│   ├── media.py                # ffmpeg 封装（转码、探针、拼接）
-│   ├── asr.py                  # 参考音频转写
-│   ├── heygem.py               # HeyGem 客户端 ★核心★
+│   ├── logs.py                 # 日志配置
+│   ├── media.py                # ffmpeg 封装 + PathMapper ★核心★
+│   ├── asr.py                  # 参考音频转写（可选）
+│   ├── heygem.py               # HeyGem 客户端 + Mock ★核心★
 │   ├── pipeline.py             # 流程编排 ★核心★
 │   └── tts/
 │       ├── base.py             # TTSEngine 抽象接口
 │       ├── gpt_sovits.py       # GPT-SoVITS 实现
-│       └── heygem_tts.py       # HeyGem 自带 TTS 实现（备选）
+│       └── mock.py             # 正弦波假引擎
+│
+├── scripts/preflight.py        # P0 手测自动化
 │
 ├── workspace/                  # 本地工作目录
-│   ├── uploads/                # 用户上传的原始文件
-│   ├── temp/                   # 中间产物
+│   ├── temp/                   # 中间产物（按 run_id 分子目录）
+│   ├── mock_shared/            # mock 模式下的"共享目录"
 │   └── outputs/                # 成片
 │
 └── logs/
@@ -359,13 +363,19 @@ curl "http://127.0.0.1:9880/tts?text=你好，这是一段测试语音。&text_l
 
 **`requirements.txt`**
 ```
-gradio>=4.0
+gradio>=4.4
 requests
-pyyaml
-pysbd            # 分句
-pydub            # 音频拼接
-ffmpeg-python
+PyYAML
+# 可选：funasr（参考音频转写，装不上则退化为 ref_free 模式）
 ```
+
+**相对原方案的三处调整：**
+
+| 调整 | 原因 |
+|---|---|
+| 不引入 `pysbd` / `pydub` | 分句用内置正则（中文本来就是按标点切）；拼接用 ffmpeg 的 `apad` + `concat` 滤镜，各段采样率不一致时也不会像 concat demuxer 那样直接报错 |
+| 去掉 `heygem_tts.py` | `18180`（TTS）不在 lite 部署里，要用得拉完整版 70GB 镜像；而它的接口语义尚未验证。留着是纯投机代码，等真需要再加 |
+| 新增 `MockHeyGemClient` | 没有 Docker 也能验证编排、路径映射、进度回调。它只覆盖 `health`/`submit`/`query` 三个 HTTP 方法，轮询逻辑复用真实实现，接口语义一致 |
 
 ---
 
@@ -500,22 +510,24 @@ class HeyGemClient:
         r.raise_for_status()
         return r.json()
 
-    def wait(self, code: str, on_progress=None) -> Path:
-        """轮询直到完成，返回成片的宿主路径。"""
-        start = time.time()
+    def poll(self, code: str):
+        """轮询直到完成。逐次 yield TaskStatus，结束时 return 成片的宿主路径。
+
+        写成生成器而不是 wait(on_progress=callback)，是因为上层（pipeline）
+        本身就是生成器 —— 用 yield from 才能把进度直接吐给 Gradio。
+        """
+        start = time.monotonic()
         while True:
-            if time.time() - start > self.timeout_task:
-                raise TimeoutError(f"任务 {code} 超时")
-            info = self.query(code)
-            progress = info.get("progress") or info.get("percent") or 0
-            if on_progress:
-                on_progress(progress, info.get("status", ""))
-            status = str(info.get("status", "")).lower()
-            if status in ("success", "succeeded", "done", "completed", "2"):
-                out_container = info.get("result") or f"/code/data/temp/{code}-r.mp4"
-                return self.mapper.to_host(out_container)
-            if status in ("failed", "error", "-1"):
-                raise RuntimeError(f"合成失败: {info}")
+            if time.monotonic() - start > self.timeout_task:
+                raise HeyGemError(f"任务 {code} 超过 {self.timeout_task}s 未完成")
+            info = _unwrap(self.query(code))
+            status, done, failed = _read_status(info)
+            if done:
+                out_container = info.get("result") or self.mapper.output_container_path(code)
+                return self.mapper.to_host(str(out_container))
+            if failed:
+                raise HeyGemError(f"合成失败: {info}")
+            yield TaskStatus(percent=_extract_percent(info), raw=info)
             time.sleep(self.poll_interval)
 ```
 
@@ -679,9 +691,16 @@ def run_pipeline(video_path, audio_ref_path, script, cfg, on_progress) -> Path:
     tts_shared = media.copy_to_shared(tts_audio)            # ★ 复制到共享目录
 
     # ── 4. 视频合成 ──
-    on_progress("合成视频", 0.50)
+    on_progress("提交合成任务", 0.50)
     code = heygem.submit(tts_shared, video_shared)
-    out = heygem.wait(code, on_progress=lambda p, s: on_progress(f"合成中 {p}%", 0.5 + p * 0.004))
+    poll = heygem.poll(code)
+    while True:
+        try:
+            status = next(poll)
+        except StopIteration as stop:
+            out = stop.value          # 成片的宿主路径
+            break
+        on_progress(f"合成中 {status.percent:.0f}%", 0.5 + status.percent * 0.0047)
 
     # ── 5. 拷贝到输出目录 ──
     on_progress("整理产物", 0.98)

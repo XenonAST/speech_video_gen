@@ -14,6 +14,16 @@ _configured = False
 FORMAT = "%(asctime)s %(levelname)-7s %(name)s | %(message)s"
 
 
+def soften_console_encoding() -> None:
+    """Windows 控制台默认 GBK，打印 ✓/emoji 会直接抛 UnicodeEncodeError。"""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def setup_logging(log_dir: Path, verbose: bool = False) -> None:
     global _configured
     if _configured:
