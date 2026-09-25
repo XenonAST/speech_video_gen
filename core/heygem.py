@@ -163,6 +163,17 @@ class HeyGemClient:
             time.sleep(interval)
 
 
+def build_heygem(cfg, mock: bool = False) -> HeyGemClient:
+    """构造客户端。mock 模式下共享目录落在 workspace 内，不碰真实挂载点。"""
+    if mock:
+        return MockHeyGemClient(cfg.paths.workspace / "mock_shared", cfg)
+    return HeyGemClient(
+        cfg.services.heygem_base,
+        media.PathMapper(cfg.paths.heygem_host_dir, cfg.paths.heygem_container_dir),
+        cfg,
+    )
+
+
 class MockHeyGemClient(HeyGemClient):
     """不依赖 Docker 的假后端。
 
@@ -170,6 +181,8 @@ class MockHeyGemClient(HeyGemClient):
     这样编排逻辑、进度回调、错误分支都能在没有容器的情况下验证。
 
     出片方式是把输入视频与音频直接合流：口型当然对不上，只保证链路通。
+    视频不够长就循环播放——真机上成片时长也是由音频决定的，这里保持同样语义，
+    免得调试时对着一个被截断的成片找错。
     """
 
     def __init__(self, shared_dir: Path, cfg, simulate_seconds: float = 2.0):
@@ -187,12 +200,15 @@ class MockHeyGemClient(HeyGemClient):
 
         out_host = self.mapper.to_host(self.mapper.output_container_path(code))
         out_host.parent.mkdir(parents=True, exist_ok=True)
+        # 用显式 -t 而不是 -shortest：stream_loop 下 -shortest 不会截断 copy 出来的视频流
+        seconds = media.duration(audio_host)
         media.run_ffmpeg(
             [
-                "-i", str(video_host),
+                "-stream_loop", "-1", "-i", str(video_host),
                 "-i", str(audio_host),
                 "-map", "0:v:0", "-map", "1:a:0",
-                "-c:v", "copy", "-c:a", "aac", "-shortest",
+                "-c:v", "copy", "-c:a", "aac",
+                "-t", f"{seconds:.3f}",
                 str(out_host),
             ],
             "mock 合流",
