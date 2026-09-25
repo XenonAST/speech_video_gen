@@ -118,6 +118,10 @@ def run_pipeline(
     run_id: str | None = None,
 ):
     """端到端流程。生成器：逐段 yield Progress，最后一段带 output。"""
+    for label, path in (("视频素材", video), ("音频素材", audio_ref)):
+        if not Path(path).exists():
+            raise ValueError(f"{label}不存在：{path}")
+
     script = (script or "").strip()
     if not script:
         raise ValueError("讲稿为空")

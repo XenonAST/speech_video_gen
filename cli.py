@@ -23,7 +23,7 @@ BAR_WIDTH = 24
 def _read_script(args) -> str:
     if args.script_file:
         return Path(args.script_file).read_text(encoding="utf-8")
-    if args.script:
+    if args.script is not None:
         return args.script
     raise SystemExit("必须提供 --script 或 --script-file")
 
