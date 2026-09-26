@@ -89,7 +89,8 @@ python cli.py --video talk.mp4 --audio voice.wav --script-file script.txt --mock
 
 ## 状态
 
-链路已打通并通过 mock 模式验证（Windows + ffmpeg，未接真实后端）。
+**P0 已通过**：完整链路（讲稿 → GPT-SoVITS 克隆音色 → HeyGem 口型驱动 → 出片）实测跑通。
+参考数据：约 110 字讲稿、6 秒参考音频，端到端 **113.6 秒**，成片 1080×1920 / 57.7 秒。
 
 - [x] 配置、媒体处理、路径映射
 - [x] HeyGem 客户端（真机 + Mock）
@@ -97,5 +98,13 @@ python cli.py --video talk.mp4 --audio voice.wav --script-file script.txt --mock
 - [x] 流程编排 + 命令行
 - [x] Gradio Web UI
 - [x] P0 自检脚本
-- [ ] **P0 手测**（需在装有 Docker 的机器上跑 `scripts/preflight.py`）
-- [ ] 接通真实 HeyGem / GPT-SoVITS
+- [x] **P0 手测**（10/11 项通过，未通过项为可选依赖）
+- [x] 接通真实 HeyGem / GPT-SoVITS
+- [ ] 人脸保真度：重生人脸有"美颜化"倾向（源视频人脸占画面过大时更明显），
+      与 MVP 验收标准未覆盖，待评估
+
+### 已知环境坑
+
+跑之前请先看 [docs/MVP方案.md 9.2 节](docs/MVP方案.md#92-环境级坑不在代码里但会反复踩)：
+Docker 的 `containerd-snapshotter` 解包、GPT-SoVITS 镜像的 numba 空缓存、
+以及 `apad` 无限补静音，这三个都不是代码问题、但都会让链路跑不起来。

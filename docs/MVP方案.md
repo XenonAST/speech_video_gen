@@ -849,20 +849,51 @@ sudo systemctl restart docker
 
 ---
 
-## 9. 待确认事项
+## 9. 待确认事项（P0 已全部实测确认）
 
-| # | 事项 | 何时确认 |
+| # | 事项 | 实测结果 |
 |---|---|---|
-| 1 | 磁盘可用空间是否 ≥100GB | 开发前（3.1） |
-| 2 | 物理内存大小（决定 WSL 分配） | 开发前（3.1） |
-| 3 | `docker-compose-lite.yml` 的实际挂载点 | P0（3.2）★ |
-| 4 | `8383` 的 API 参数准确名称与返回结构 | P0（3.4）★ 优先看 `/docs` |
-| 5 | HeyGem 接受的音频采样率 | P0（3.5） |
-| 6 | GPT-SoVITS 输出采样率 | P0（3.6） |
-| 7 | 两者同时运行的显存是否够 | P0（3.6） |
+| 1 | 磁盘可用空间是否 ≥100GB | ✅ 充足（WSL 虚拟磁盘 1TB，两张镜像解包后约 70GB） |
+| 2 | 物理内存大小 | **61.6 GB**，`.wslconfig` 分配 48GB（WSL 默认只给 50%，需显式配置） |
+| 3 | `docker-compose-lite.yml` 的实际挂载点 ★ | **`d:/duix_avatar_data/face2face` ⇄ `/code/data`**。文档原假设的 `~/heygem_data/face2face` 是**错的**；且 `d:/...` 是 Windows 版 Docker Desktop 的路径写法，WSL 原生 Docker 下须改写为 `/home/xenon/duix_avatar_data/face2face` |
+| 4 | `8383` 的 API 参数名与返回结构 ★ | **不是 FastAPI，所以 `/docs` 和 `/health` 都不存在**；只有 `/easy/submit`(POST) 与 `/easy/query`(GET)。详见 [9.1](#91-heygem-api-契约实测) |
+| 5 | HeyGem 接受的音频采样率 | ✅ **16000 Hz 单声道**——成片音轨实测即此格式，`config.yaml` 的 `target_sample_rate: 16000` 正确 |
+| 6 | GPT-SoVITS 输出采样率 | ✅ **32000 Hz 单声道**。与 #5 不一致，所以「合成后必须重采样到 16kHz」这一步是必需的，不是可选优化 |
+| 7 | 两者同时运行的显存是否够 | ✅ 够。HeyGem 稳态约 10GB，GPT-SoVITS 加载后合计约 7GB 起，24GB 有余量 |
 
-> ★ 项为**阻塞性**事项，未确认前不要开始 P2 之后的开发。
+**结论：1.3 节标记为"致命"的风险（纯 API 能否完成合成）已证伪——可以，且不需要官方 GUI 的任何预处理。**
+
+### 9.1 HeyGem API 契约（实测）
+
+`8383` 是 **Flask** 应用。响应统一为 `{code, success, msg, data}`，`code` 是数字码：
+
+| code | 含义 | success |
+|---|---|---|
+| 10000 | 成功 | true |
+| 10001 | 忙碌中 | **true** ⚠️ |
+| 10002 | 参数异常 | false |
+| 10004 | 任务不存在 | **true** ⚠️ |
+| 9999 | 系统异常 | false |
+
+> ⚠️ 10001 / 10004 的 `success` 同样是 `true`，**判定必须看 `code` 而非 `success`**。
+
+`/easy/query` 的业务数据嵌在 `data` 里，`status` 枚举：`run=1` / `success=2` / `error=3`。
+
+三条容易踩的行为：
+
+1. **终态即回收**——任务进入 success/error 后服务端**立即从字典删除**，再查返回 10004。轮询必须在首次拿到终态时收手。
+2. **`data.result` 不可信**——成功时它返回的是中间产物（如 `temp/{code}/result.avi`）或一个不存在的根路径，**不是成片**。成片在约定的 `temp/{code}-r.mp4`。
+3. `/code/data/temp/{code}/` 是服务端的内部工作目录。
+
+### 9.2 环境级坑（不在代码里，但会反复踩）
+
+| 现象 | 根因 | 解法 |
+|---|---|---|
+| 容器内**任何** exec 都报 `input/output error` | Docker 的 `containerd-snapshotter` 解包这张镜像时，把 `/usr/lib/x86_64-linux-gnu` 下 **1596 个文件全解成 0 字节**（blob 的 digest 校验是通过的，损坏发生在解包环节） | `/etc/docker/daemon.json` 设 `"features": {"containerd-snapshotter": false}`，切回经典 overlay2 |
+| GPT-SoVITS `/tts` 永远返回 `{"message":"tts failed","Exception":"Ran out of input"}`，换参考音频/分句方式/文本都一样 | 镜像里 **16 个 numba JIT 缓存（`.nbc`）全是 0 字节**，librosa 导入时 `@guvectorize` 触发 numba 读缓存，`pickle.loads` 读到空流抛 EOFError。**错误发生在导入阶段，与请求参数无关** | 启动前 `find /root/conda -name "*.nbc" -delete`（缓存可再生） |
+| 拼接音频产出无限增长的巨型文件 | ffmpeg `apad` 的 `pad_dur` **默认值就是 0，传 0 等于没限长**，会无限补静音，`concat` 串成无限流 | 停顿为 0 的片段改用 `anull` 透传，不挂 `apad` |
+| 镜像默认 Cmd 会 `rm -rf` 工作目录里的模型目录 | 该 Cmd 是给 compose 挂载宿主机仓库设计的，会把宿主机的 `pretrained_models` 等四个目录删掉再软链 | 不要挂载仓库目录；若用自定义命令启动，需自己复刻软链步骤 |
 
 ---
 
-*文档结束。P0 完成后请回来更新第 9 章并将 3.5 / 3.6 的实测值填入 `config.yaml`。*
+*文档结束。P0 已通过：完整链路（讲稿 → 克隆音色 → 口型驱动 → 出片）实测跑通。*

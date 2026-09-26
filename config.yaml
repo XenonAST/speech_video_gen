@@ -26,7 +26,8 @@ tts:
   pause_paragraph: 800
 
 audio:
-  # HeyGem 输入音频的统一格式（P0 步骤 3.5 后按实测调整）
+  # 成片音轨实测就是这个格式（P0 3.5），保持 16000。
+  # GPT-SoVITS 输出的是 32kHz（P0 3.6），所以合成后必须重采样到此处配置值。
   target_sample_rate: 16000
   target_channels: 1
 
