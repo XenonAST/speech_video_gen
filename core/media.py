@@ -152,7 +152,13 @@ def concat_audio(clips: list[tuple[Path, int]], dst: Path, cfg) -> Path:
     for path, _ in clips:
         args += ["-i", str(path)]
 
-    chain = [f"[{i}:a]apad=pad_dur={pause / 1000:.3f}[a{i}]" for i, (_, pause) in enumerate(clips)]
+    # apad 的 pad_dur 默认值就是 0，传 0 等于没限制，它会**无限补静音**，
+    # concat 再把这个无限流一直串下去，输出文件无上限增长（实测 20 秒写出 8GB）。
+    # 停顿为 0 的片段必须直接透传，不能挂 apad。末尾那句的 pause_ms 正是 0。
+    chain = [
+        f"[{i}:a]apad=pad_dur={pause / 1000:.3f}[a{i}]" if pause > 0 else f"[{i}:a]anull[a{i}]"
+        for i, (_, pause) in enumerate(clips)
+    ]
     if len(clips) == 1:
         chain.append("[a0]anull[out]")
     else:

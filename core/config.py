@@ -111,5 +111,7 @@ def load_config(path: str | Path | None = None) -> SimpleNamespace:
 
 
 def ensure_dirs(cfg) -> None:
+    # logs 是 git 忽略的，新克隆出来的工作区没有它，preflight 写报告会直接崩
+    cfg.paths.logs.mkdir(parents=True, exist_ok=True)
     for sub in ("uploads", "temp", "outputs"):
         (cfg.paths.workspace / sub).mkdir(parents=True, exist_ok=True)

@@ -66,9 +66,9 @@ class GPTSoVITSEngine(TTSEngine):
             "media_type": "wav",
             "streaming_mode": False,
         }
-        if voice.get("ref_free"):
-            payload["ref_free"] = True
-        else:
+        # 服务端 TTS_Request 里没有 ref_free 字段，发了也会被 pydantic 丢掉。
+        # 无参考文本的正确表达是 prompt_text 留空，服务端据此走 no_prompt_text 分支。
+        if not voice.get("ref_free"):
             payload["prompt_text"] = voice["ref_text"]
 
         try:

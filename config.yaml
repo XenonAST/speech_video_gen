@@ -4,7 +4,7 @@
 paths:
   # ★ 必须与 docker-compose-lite.yml 的 volumes 定义一致 ★
   #   P0 步骤 3.2：grep -A 5 "volumes:" docker-compose-lite.yml
-  heygem_host_dir: "~/heygem_data/face2face"   # 宿主机方向
+  heygem_host_dir: "/home/xenon/duix_avatar_data/face2face"   # 宿主机方向（P0 3.2 实测）
   heygem_container_dir: "/code/data"           # 容器内方向
   workspace: "workspace"                       # 相对路径按项目根目录解析
   logs: "logs"
