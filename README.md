@@ -20,11 +20,13 @@ nvidia-smi                              # WSL 内验证 GPU 透传
 docker run --rm --gpus all nvidia/cuda:11.6.2-base-ubuntu20.04 nvidia-smi
 
 # 2. 依赖
-pip install -r requirements.txt         # 另外需要 ffmpeg / ffprobe 在 PATH 里
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt    # 另外需要 ffmpeg / ffprobe 在 PATH 里
 
-# 3. 启动后端服务（另开两个终端）
-cd ~/Duix-Avatar/deploy && docker-compose -f docker-compose-lite.yml up -d
-cd ~/GPT-SoVITS && python api_v2.py -a 127.0.0.1 -p 9880
+# 3. 启动后端服务（Duix.Avatar :8383 与 GPT-SoVITS :9880）
+#    不要照抄官方 compose 直接起 —— 有两处非显而易见的步骤，脚本里都处理了，
+#    细节见脚本头部注释与 docs/MVP方案.md 9.2 节
+bash scripts/start-services.sh
 
 # 4. 先跑 P0 自检，确认挂载点和服务都对
 python scripts/preflight.py --video test.mp4 --audio test.wav
