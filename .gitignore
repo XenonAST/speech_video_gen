@@ -221,3 +221,6 @@ __marimo__/
 workspace/
 logs/
 testdata/
+
+# ── 本项目测试用多媒体资源 ──
+static/
